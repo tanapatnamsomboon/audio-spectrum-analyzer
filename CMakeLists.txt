@@ -24,9 +24,14 @@ add_library(imgui STATIC
 
 target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 
-include_directories(include thirdparty/glfw/include)
+include_directories(include thirdparty/glfw/include thirdparty/miniaudio)
 
-add_executable(${PROJECT_NAME} src/main.cpp src/gui.cpp)
+add_executable(${PROJECT_NAME} 
+    src/main.cpp 
+    src/gui.cpp
+    src/audio.cpp
+    src/math_utils.cpp
+)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     imgui
