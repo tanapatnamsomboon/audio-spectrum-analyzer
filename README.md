@@ -16,7 +16,7 @@ A real-time audio spectrum analyzer built with C++. This project captures live m
 ## Requirements
 
 To build this project, you will need:
-* A C++23 compatible compiler (GCC, Clang, or MSVC)
+* A C++17 compatible compiler (GCC, Clang, or MSVC)
 * CMake (3.20 or higher)
 * Git
 
