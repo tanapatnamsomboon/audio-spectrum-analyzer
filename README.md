@@ -32,7 +32,7 @@ sudo apt-get install xorg-dev libgl1-mesa-dev
 This project uses Git submodules for managing dependencies (`glfw` and `imgui`). Please make sure to clone the repository recursively.
 ### 1. Clone the repository
 ```bash
-git clone --recursive [https://github.com/tanapatnamsomboon/audio-spectrum-analyzer.git](https://github.com/tanapatnamsomboon/audio-spectrum-analyzer.git)
+git clone --recursive https://github.com/tanapatnamsomboon/audio-spectrum-analyzer.git
 cd audio-spectrum-analyzer
 ```
 (if you already cloned without `--recursive`, you can run: `git submodule update --init --recursive`)
@@ -52,9 +52,7 @@ make
 - **GUI Module:** Handles window creation, OpenGL context, and ImGui rendering boilerplate.
 - **Audio Module:** Runs a background thread via miniaudio callback to safely capture and buffer raw audio samples.
 - **Math Module:** Computes the magnitude of frequency bins using the DFT equation: 
-$$
-X[k] = \sum_{n=0}^{N-1} x[n] \cdot e^{-i \frac{2\pi}{N} kn}
-$$
+$$X[k] = \sum_{n=0}^{N-1} x[n] \cdot e^{-i \frac{2\pi}{N} kn}$$
 
 ## License
 [MIT License](https://github.com/tanapatnamsomboon/audio-spectrum-analyzer/blob/master/LICENSE)
