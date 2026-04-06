@@ -19,6 +19,8 @@ int main() {
     std::vector<audio::DeviceInfo> devices = audio::get_capture_devices();
     int current_device_index = -1; // Default
 
+    char filepath_input[256] = "test.wav";
+
     while(!glfwWindowShouldClose(window)) {
         gui::begin_frame();
         
@@ -38,8 +40,11 @@ int main() {
         ImGui::Begin("Real-time Spectrum Analyzer");
 
         // Input Source Controller
-        ImGui::Text("Audio Input Source");
-        
+        ImGui::Text("Input Mode: %s", (audio::get_current_source() == audio::InputSource::Microphone) ? "Microphone" : "File Playback");
+        ImGui::Separator();
+
+        // Mode 1: Microphone
+        ImGui::Text("1. Microphone");
         std::string preview_value = "Default Capture Device";
         for (const auto& dev : devices) {
             if (dev.index == current_device_index) preview_value = dev.name;
@@ -69,6 +74,20 @@ int main() {
             devices = audio::get_capture_devices();
         }
 
+        ImGui::Spacing();
+
+        // Mode 2: Audio File
+        ImGui::Text("2. Audio File (.wav, .mp3)");
+        ImGui::InputText("Filepath", filepath_input, IM_ARRAYSIZE(filepath_input));
+        ImGui::SameLine();
+        if (ImGui::Button("Play File")) {
+            audio::load_and_play_file(std::string(filepath_input));
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Stop & Return to Mic")) {
+            audio::switch_device(current_device_index);
+        }
+
         ImGui::Separator();
         
         // Draw Histogram
@@ -81,7 +100,6 @@ int main() {
                              ImVec2(ImGui::GetContentRegionAvail().x, 250));
 
         ImGui::Separator();
-
         ImGui::Text("Settings");
         ImGui::SliderFloat("Scale Max", &max_magnitude, 1.0f, 200.0f);
         ImGui::SliderFloat("Smoothing", &smoothing_factor, 0.01f, 1.0f);

@@ -10,23 +10,40 @@ namespace audio {
 
 ma_context g_context;
 ma_device g_device;
+ma_decoder g_decoder;
+
 bool g_is_context_initialized = false;
 bool g_is_device_initialized = false;
+bool g_is_file_playing = false;
+
+InputSource g_current_source = InputSource::Microphone;
 
 const int SAMPLE_SIZE = 512;
 std::vector<float> g_sample_buffer(SAMPLE_SIZE, 0.0f);
 std::mutex g_buffer_mutex;
 
 void data_callback(ma_device* p_device, void* p_output, const void* p_input, ma_uint32 frame_count) {
-    if (p_input == nullptr) return;
-    
     std::lock_guard<std::mutex> lock(g_buffer_mutex);
-    const float* p_input_f32 = (const float*)p_input;
+    
+    if (g_current_source == InputSource::Microphone) {
+        if (p_input == nullptr) return;
+        const float* p_input_f32 = (const float*)p_input;
+        for (ma_uint32 i = 0; i < frame_count && i < SAMPLE_SIZE; ++i) {
+            g_sample_buffer[i] = p_input_f32[i];
+        }
+    } else if (g_current_source == InputSource::File && g_is_file_playing) {
+        if (p_output == nullptr) return;
+        float* p_output_f32 = (float*)p_output;
 
-    // Copy sound data to buffer
-    for (ma_uint32 i = 0; i < frame_count && i < SAMPLE_SIZE; ++i) {
-        g_sample_buffer[i] = p_input_f32[i];
-    }
+        // 1. Read data from audio file and send it to speaker (p_output)
+        ma_uint64 frames_read = 0;
+        ma_decoder_read_pcm_frames(&g_decoder, p_output_f32, frame_count, &frames_read);
+
+        // 2. Copy the same data for graph analysis
+        for (ma_uint32 i = 0; i < frames_read && i < SAMPLE_SIZE; ++i) {
+            g_sample_buffer[i] = p_output_f32[i];
+        }
+    }    
 }
 
 bool init() {
@@ -41,7 +58,9 @@ bool init() {
 }
 
 void cleanup() {
-    ma_device_uninit(&g_device);
+    stop_file();
+    if (g_is_device_initialized) ma_device_uninit(&g_device);
+    if (g_is_context_initialized) ma_context_uninit(&g_context);
 }
 
 std::vector<float> get_latest_samples() {
@@ -71,6 +90,9 @@ bool switch_device(int device_index) {
         ma_device_uninit(&g_device);
         g_is_device_initialized = false;
     }
+
+    stop_file();
+    g_current_source = InputSource::Microphone;
 
     ma_device_id* p_selected_id = nullptr;
     if (device_index >= 0) {
@@ -105,6 +127,56 @@ bool switch_device(int device_index) {
     std::fill(g_sample_buffer.begin(), g_sample_buffer.end(), 0.0f);
 
     return true;
+}
+
+bool load_and_play_file(const std::string& filepath) { 
+    // 1. Stop the microphone
+    if (g_is_device_initialized) {
+        ma_device_stop(&g_device);
+        g_is_device_initialized = false;
+    }
+    stop_file();
+
+    // 2. Load audio file and force-convert all formats to Mono, Float32, 44100 Hz
+    ma_decoder_config decoder_config = ma_decoder_config_init(ma_format_f32, 1, 44100);
+    if (ma_decoder_init_file(filepath.c_str(), &decoder_config, &g_decoder) != MA_SUCCESS) {
+        std::cerr << "Failed to load file: " << filepath << "\n";
+        switch_device(-1);
+        return false;
+    }
+    g_is_file_playing = true;
+    g_current_source  = InputSource::File;
+
+    // 3. Initialize a new device, this time in "Playback" mode (speaker)
+    ma_device_config device_config = ma_device_config_init(ma_device_type_playback);
+    device_config.playback.format = ma_format_f32;
+    device_config.playback.channels = 1;
+    device_config.sampleRate        = 44100;
+    device_config.dataCallback      = data_callback;
+
+    if (ma_device_init(&g_context, &device_config, &g_device) != MA_SUCCESS) {
+        std::cerr << "Failed to init playback device.\n";
+        return false;
+    }
+    
+    ma_device_start(&g_device);
+    g_is_device_initialized = true;
+
+    std::lock_guard<std::mutex> lock(g_buffer_mutex);
+    std::fill(g_sample_buffer.begin(), g_sample_buffer.end(), 0.0f);
+
+    return true;
+}
+
+void stop_file() {
+    if (g_is_file_playing) {
+        ma_decoder_uninit(&g_decoder);
+        g_is_file_playing = false;
+    }
+}
+
+InputSource get_current_source() {
+    return g_current_source;
 }
 
 } // namespace audio
