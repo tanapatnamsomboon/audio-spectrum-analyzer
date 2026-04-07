@@ -5,6 +5,7 @@
 #include <imgui.h>
 #include <portable-file-dialogs.h>
 #include <filesystem>
+#include <memory>
 
 int main() {
     if (!audio::init()) return -1;
@@ -21,6 +22,10 @@ int main() {
     int current_device_index = -1; // Default
 
     std::string selected_file = "assets/sounds/sine_440hz_44k_6dB";
+
+    std::shared_ptr<pfd::open_file> open_file_dialog;
+
+    std::string default_dir = std::filesystem::absolute("assets/sounds").string();
 
     while(!glfwWindowShouldClose(window)) {
         gui::begin_frame();
@@ -97,12 +102,20 @@ int main() {
             ImGui::TextWrapped("File: %s", filename.c_str());
 
             if (ImGui::Button("Browse File...")) {
-                auto selection = pfd::open_file("Select audio file", ".",
-                                                {"Audio Files", "*.wav *.mp3 *.flac"}).result();
+                open_file_dialog = std::make_shared<pfd::open_file>(
+                    "Select audio file",
+                    default_dir,
+                    std::vector<std::string>{"Audio Files", "*.wav *.mp3 *.flac"}
+                );
+            }
+
+            if (open_file_dialog && open_file_dialog->ready(0)) {
+                auto selection = open_file_dialog->result();
                 if (!selection.empty()) {
                     selected_file = selection[0];
                     audio::load_file(selected_file);
                 }
+                open_file_dialog.reset();
             }
 
             ImGui::Spacing();
