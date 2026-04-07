@@ -24,7 +24,7 @@ add_library(imgui STATIC
 
 target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 
-include_directories(include thirdparty/glfw/include thirdparty/miniaudio)
+include_directories(include thirdparty/glfw/include thirdparty/miniaudio thirdparty/portable-file-dialogs)
 
 add_executable(${PROJECT_NAME} 
     src/main.cpp 
