@@ -3,7 +3,8 @@
 #include "math_utils.h"
 #include <GLFW/glfw3.h>
 #include <imgui.h>
-#include <algorithm>
+#include <portable-file-dialogs.h>
+#include <filesystem>
 
 int main() {
     if (!audio::init()) return -1;
@@ -19,7 +20,7 @@ int main() {
     std::vector<audio::DeviceInfo> devices = audio::get_capture_devices();
     int current_device_index = -1; // Default
 
-    char filepath_input[256] = "test.wav";
+    std::string selected_file = "assets/sounds/sine_440hz_44k_6dB";
 
     while(!glfwWindowShouldClose(window)) {
         gui::begin_frame();
@@ -92,10 +93,32 @@ int main() {
         ImGui::Spacing();
 
         if (ImGui::CollapsingHeader("Audio File", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::InputText("##Filepath", filepath_input, IM_ARRAYSIZE(filepath_input));
-            if (ImGui::Button("Play File")) audio::load_and_play_file(std::string(filepath_input));
+            std::string filename = std::filesystem::path(selected_file).filename().string();
+            ImGui::TextWrapped("File: %s", filename.c_str());
+
+            if (ImGui::Button("Browse File...")) {
+                auto selection = pfd::open_file("Select audio file", ".",
+                                                {"Audio Files", "*.wav *.mp3 *.flac"}).result();
+                if (!selection.empty()) {
+                    selected_file = selection[0];
+                    audio::load_file(selected_file);
+                }
+            }
+
+            ImGui::Spacing();
+
+            if (audio::is_playing()) {
+                if (ImGui::Button("PAUSE")) audio::pause();
+            } else {
+                if (ImGui::Button("PLAY")) {
+                    if (audio::get_current_source() != audio::InputSource::File) {
+                        audio::load_file(selected_file);
+                    }
+                    audio::play();
+                }
+            }
             ImGui::SameLine();
-            if (ImGui::Button("Return to Mic")) audio::switch_device(current_device_index);
+            if (ImGui::Button("STOP")) audio::stop();
         }
 
         ImGui::Spacing();

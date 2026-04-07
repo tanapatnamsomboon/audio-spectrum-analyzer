@@ -22,6 +22,10 @@ const int SAMPLE_SIZE = 512;
 std::vector<float> g_sample_buffer(SAMPLE_SIZE, 0.0f);
 std::mutex g_buffer_mutex;
 
+bool g_is_paused = false;
+bool g_is_loaded = false;
+bool g_is_eof = false;
+
 void data_callback(ma_device* p_device, void* p_output, const void* p_input, ma_uint32 frame_count) {
     std::lock_guard<std::mutex> lock(g_buffer_mutex);
     
@@ -35,13 +39,23 @@ void data_callback(ma_device* p_device, void* p_output, const void* p_input, ma_
         if (p_output == nullptr) return;
         float* p_output_f32 = (float*)p_output;
 
-        // 1. Read data from audio file and send it to speaker (p_output)
+        if (g_is_paused) {
+            std::fill_n(p_output_f32, frame_count, 0.0f);
+            return;
+        }
+
+        // 1. Read data from an audio file and send it to the speaker (p_output)
         ma_uint64 frames_read = 0;
         ma_decoder_read_pcm_frames(&g_decoder, p_output_f32, frame_count, &frames_read);
 
         // 2. Copy the same data for graph analysis
         for (ma_uint32 i = 0; i < frames_read && i < SAMPLE_SIZE; ++i) {
             g_sample_buffer[i] = p_output_f32[i];
+        }
+
+        if (frames_read < frame_count) {
+            g_is_file_playing = false;
+            g_is_eof = true;
         }
     }    
 }
@@ -129,11 +143,7 @@ bool switch_device(int device_index) {
     return true;
 }
 
-const std::string SOUND_DIR = "assets/sounds/";
-
-bool load_and_play_file(const std::string& filepath) { 
-    std::string full_path = SOUND_DIR + filepath;
-
+bool load_file(const std::string& filepath) {
     // 1. Stop the microphone
     if (g_is_device_initialized) {
         ma_device_stop(&g_device);
@@ -143,12 +153,15 @@ bool load_and_play_file(const std::string& filepath) {
 
     // 2. Load audio file and force-convert all formats to Mono, Float32, 44100 Hz
     ma_decoder_config decoder_config = ma_decoder_config_init(ma_format_f32, 1, 44100);
-    if (ma_decoder_init_file(full_path.c_str(), &decoder_config, &g_decoder) != MA_SUCCESS) {
-        std::cerr << "Failed to load file: " << full_path << "\n";
+    if (ma_decoder_init_file(filepath.c_str(), &decoder_config, &g_decoder) != MA_SUCCESS) {
+        std::cerr << "Failed to load file: " << filepath << "\n";
         switch_device(-1);
         return false;
     }
-    g_is_file_playing = true;
+
+    g_is_loaded = true;
+    g_is_file_playing = false;
+    g_is_paused = false;
     g_current_source  = InputSource::File;
 
     // 3. Initialize a new device, this time in "Playback" mode (speaker)
@@ -166,17 +179,46 @@ bool load_and_play_file(const std::string& filepath) {
     ma_device_start(&g_device);
     g_is_device_initialized = true;
 
-    std::lock_guard<std::mutex> lock(g_buffer_mutex);
-    std::fill(g_sample_buffer.begin(), g_sample_buffer.end(), 0.0f);
-
     return true;
 }
 
-void stop_file() {
-    if (g_is_file_playing) {
-        ma_decoder_uninit(&g_decoder);
-        g_is_file_playing = false;
+void play() {
+    if (g_is_loaded && g_is_eof) {
+        ma_decoder_seek_to_pcm_frame(&g_decoder, 0);
+        g_is_eof = false;
     }
+
+    if (g_is_loaded) {
+        g_is_file_playing = true;
+        g_is_paused = false;
+    }
+}
+
+void pause() {
+    g_is_paused = true;
+}
+
+void stop() {
+    stop_file();
+    switch_device(-1);
+}
+
+void stop_file() {
+    if (g_is_loaded) {
+        ma_decoder_uninit(&g_decoder);
+        g_is_loaded = false;
+    }
+    g_is_file_playing = false;
+    g_is_paused = false;
+    g_is_eof = false;
+}
+
+bool is_playing() {
+    return g_is_file_playing && !g_is_paused;
+}
+
+bool is_paused() {
+    return g_is_paused;
 }
 
 InputSource get_current_source() {
