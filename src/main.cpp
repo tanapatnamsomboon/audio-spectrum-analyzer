@@ -35,77 +35,103 @@ int main() {
             smooth_spectrum[i] = (raw_spectrum[i] * smoothing_factor) + (smooth_spectrum[i] * (1.0f - smoothing_factor));
         }
 
-        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(1260, 400), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Real-time Spectrum Analyzer");
-
-        // Input Source Controller
-        ImGui::Text("Input Mode: %s", (audio::get_current_source() == audio::InputSource::Microphone) ? "Microphone" : "File Playback");
-        ImGui::Separator();
-
-        // Mode 1: Microphone
-        ImGui::Text("1. Microphone");
-        std::string preview_value = "Default Capture Device";
-        for (const auto& dev : devices) {
-            if (dev.index == current_device_index) preview_value = dev.name;
-        }
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->WorkPos);
+        ImGui::SetNextWindowSize(viewport->WorkSize);
         
-        if (ImGui::BeginCombo("##DeviceCombo", preview_value.c_str())) {
-            // First choice: Default
-            if (ImGui::Selectable("Default Capture Device", current_device_index == -1)) {
-                current_device_index = -1;
-                audio::switch_device(current_device_index);
-            }
-            
-            // Other choice
+        ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar
+                                      | ImGuiWindowFlags_NoCollapse
+                                      | ImGuiWindowFlags_NoResize
+                                      | ImGuiWindowFlags_NoMove
+                                      | ImGuiWindowFlags_NoBringToFrontOnFocus
+                                      | ImGuiWindowFlags_NoNavFocus;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20.0f, 20.0f));
+        ImGui::Begin("MainWorkspace", nullptr, window_flags);
+        ImGui::PopStyleVar();
+
+        // Left Panel: Controller
+        float left_panel_width = ImGui::GetWindowWidth() * 0.35f;
+
+        ImGui::BeginChild("LeftPanel", ImVec2(left_panel_width, 0), true);
+
+        ImGui::Dummy(ImVec2(0.0f, 5.0f));
+        ImGui::Text("  INPUT CONFIGURATION");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::Text("  Mode: %s", (audio::get_current_source() == audio::InputSource::Microphone) ? "Microphone" : "File Playback");
+        ImGui::Spacing();
+
+        if (ImGui::CollapsingHeader("Microphone", ImGuiTreeNodeFlags_DefaultOpen)) {
+            std::string preview_value = "Default Capture Device";
             for (const auto& dev : devices) {
-                bool is_selected = (current_device_index == dev.index);
-                if (ImGui::Selectable(dev.name.c_str(), is_selected)) {
-                    current_device_index = dev.index;
+                if (dev.index == current_device_index) preview_value = dev.name;
+            }
+            if (ImGui::BeginCombo("##DeviceCombo", preview_value.c_str())) {
+                // First choice: Default
+                if (ImGui::Selectable("Default Capture Device", current_device_index == -1)) {
+                    current_device_index = -1;
                     audio::switch_device(current_device_index);
                 }
-                if (is_selected) ImGui::SetItemDefaultFocus();
+                
+                // Other choice
+                for (const auto& dev : devices) {
+                    bool is_selected = (current_device_index == dev.index);
+                    if (ImGui::Selectable(dev.name.c_str(), is_selected)) {
+                        current_device_index = dev.index;
+                        audio::switch_device(current_device_index);
+                    }
+                    if (is_selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
             }
-            ImGui::EndCombo();
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button("Refresh List")) {
-            devices = audio::get_capture_devices();
+            if (ImGui::Button("Refresh Mic List")) devices = audio::get_capture_devices();
         }
 
         ImGui::Spacing();
 
-        // Mode 2: Audio File
-        ImGui::Text("2. Audio File (.wav, .mp3)");
-        ImGui::InputText("Filepath", filepath_input, IM_ARRAYSIZE(filepath_input));
-        ImGui::SameLine();
-        if (ImGui::Button("Play File")) {
-            audio::load_and_play_file(std::string(filepath_input));
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Stop & Return to Mic")) {
-            audio::switch_device(current_device_index);
+        if (ImGui::CollapsingHeader("Audio File", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::InputText("##Filepath", filepath_input, IM_ARRAYSIZE(filepath_input));
+            if (ImGui::Button("Play File")) audio::load_and_play_file(std::string(filepath_input));
+            ImGui::SameLine();
+            if (ImGui::Button("Return to Mic")) audio::switch_device(current_device_index);
         }
 
+        ImGui::Spacing();
+        ImGui::Text("VISUALIZER SETTINGS");
         ImGui::Separator();
-        
-        // Draw Histogram
-        ImGui::PlotHistogram("##Spectrum",
-                             smooth_spectrum.data(),
-                             smooth_spectrum.size(),                                 0,
-                             "Frequency Bins",
-                             0.0f,
-                             max_magnitude,
-                             ImVec2(ImGui::GetContentRegionAvail().x, 250));
-
-        ImGui::Separator();
-        ImGui::Text("Settings");
         ImGui::SliderFloat("Scale Max", &max_magnitude, 1.0f, 200.0f);
         ImGui::SliderFloat("Smoothing", &smoothing_factor, 0.01f, 1.0f);
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        
+
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        // Right Panel: Histogram
+        ImGui::BeginChild("RightPanel", ImVec2(0, 0), true);
+
+        ImGui::Dummy(ImVec2(0.0f, 5.0f));
+        ImGui::Text("  SPECTRUM ANALYZER");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImVec2 graph_size = ImGui::GetContentRegionAvail();
+        graph_size.y -= 10.0f;
+
+        ImGui::PlotHistogram("##Spectrum",
+                             smooth_spectrum.data(),
+                             smooth_spectrum.size(),
+                             0,
+                             NULL,
+                             0.0f,
+                             max_magnitude,
+                             graph_size);
+
+        ImGui::EndChild();
+
         ImGui::End();
+
         gui::end_frame(window);
     }
 

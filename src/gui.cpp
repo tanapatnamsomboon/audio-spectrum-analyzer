@@ -34,7 +34,18 @@ void setup_imgui(GLFWwindow* window) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
 
+    io.IniFilename = NULL;
+
+    ImFont* custom_font = io.Fonts->AddFontFromFileTTF("assets/fonts/josefin-sans/JosefinSans-Regular.ttf", 20.0f);
+    if (custom_font == nullptr) {
+        std::cerr << "Warning: Failed to load font. Using default font.\n";
+    }
+
     ImGui::StyleColorsDark();
+
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowRounding = 0.0f;
+    style.FrameRounding = 4.0f;
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 460");

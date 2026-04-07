@@ -129,7 +129,11 @@ bool switch_device(int device_index) {
     return true;
 }
 
+const std::string SOUND_DIR = "assets/sounds/";
+
 bool load_and_play_file(const std::string& filepath) { 
+    std::string full_path = SOUND_DIR + filepath;
+
     // 1. Stop the microphone
     if (g_is_device_initialized) {
         ma_device_stop(&g_device);
@@ -139,8 +143,8 @@ bool load_and_play_file(const std::string& filepath) {
 
     // 2. Load audio file and force-convert all formats to Mono, Float32, 44100 Hz
     ma_decoder_config decoder_config = ma_decoder_config_init(ma_format_f32, 1, 44100);
-    if (ma_decoder_init_file(filepath.c_str(), &decoder_config, &g_decoder) != MA_SUCCESS) {
-        std::cerr << "Failed to load file: " << filepath << "\n";
+    if (ma_decoder_init_file(full_path.c_str(), &decoder_config, &g_decoder) != MA_SUCCESS) {
+        std::cerr << "Failed to load file: " << full_path << "\n";
         switch_device(-1);
         return false;
     }
