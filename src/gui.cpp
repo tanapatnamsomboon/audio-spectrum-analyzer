@@ -36,7 +36,7 @@ void setup_imgui(GLFWwindow* window) {
 
     io.IniFilename = NULL;
 
-    ImFont* custom_font = io.Fonts->AddFontFromFileTTF("assets/fonts/josefin-sans/JosefinSans-Regular.ttf", 20.0f);
+    ImFont* custom_font = io.Fonts->AddFontFromFileTTF("assets/fonts/roboto/Roboto-Regular.ttf", 18.0f);
     if (custom_font == nullptr) {
         std::cerr << "Warning: Failed to load font. Using default font.\n";
     }
