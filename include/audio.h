@@ -28,7 +28,11 @@ bool is_playing();
 bool is_paused();
 
 std::vector<DeviceInfo> get_capture_devices();
-bool switch_device(int device_index); // -1 for Default Device
+bool switch_capture_device(int device_index); // -1 for Default Device
+
+std::vector<DeviceInfo> get_playback_devices();
+bool switch_playback_device(int device_index);
+
 InputSource get_current_source();
 
 } // namespace audio

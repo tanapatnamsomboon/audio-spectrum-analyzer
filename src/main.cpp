@@ -18,10 +18,15 @@ int main() {
     std::vector<float> smooth_spectrum;
     float smoothing_factor = 0.15f;
 
-    std::vector<audio::DeviceInfo> devices = audio::get_capture_devices();
-    int current_device_index = -1; // Default
+    // Microphone devices list
+    std::vector<audio::DeviceInfo> capture_devices = audio::get_capture_devices();
+    int current_capture_device_index = -1; // Default
 
-    std::string selected_file = "assets/sounds/sine_440hz_44k_6dB";
+    // Speaker devices list
+    std::vector<audio::DeviceInfo> playback_devices = audio::get_playback_devices();
+    int current_playback_device_index = -1;
+
+    std::string selected_file = "assets/sounds/sine_440hz_-6db.wav";
 
     std::shared_ptr<pfd::open_file> open_file_dialog;
 
@@ -69,30 +74,60 @@ int main() {
         ImGui::Text("  Mode: %s", (audio::get_current_source() == audio::InputSource::Microphone) ? "Microphone" : "File Playback");
         ImGui::Spacing();
 
+        if (ImGui::CollapsingHeader("Speaker", ImGuiTreeNodeFlags_DefaultOpen)) {
+            std::string preview_value = "Default Capture Device";
+            for (const auto& dev : playback_devices) {
+                if (dev.index == current_playback_device_index) preview_value = dev.name;
+            }
+            if (ImGui::BeginCombo("##PlaybackCombo", preview_value.c_str())) {
+                // First choice: Default
+                if (ImGui::Selectable("Default Playback Device", current_playback_device_index == -1)) {
+                    current_playback_device_index = -1;
+                    audio::switch_playback_device(current_playback_device_index);
+                }
+
+                // Other choice
+                for (const auto& dev : playback_devices) {
+                    bool is_selected = (current_playback_device_index == dev.index);
+                    if (ImGui::Selectable(dev.name.c_str(), is_selected)) {
+                        current_playback_device_index = dev.index;
+                        audio::switch_playback_device(current_playback_device_index);
+                    }
+                    if (is_selected) ImGui::SetItemDefaultFocus();
+                }
+
+                ImGui::EndCombo();
+            }
+
+            if (ImGui::Button("Reset Output List")) playback_devices = audio::get_playback_devices();
+        }
+
+        ImGui::Separator();
+
         if (ImGui::CollapsingHeader("Microphone", ImGuiTreeNodeFlags_DefaultOpen)) {
             std::string preview_value = "Default Capture Device";
-            for (const auto& dev : devices) {
-                if (dev.index == current_device_index) preview_value = dev.name;
+            for (const auto& dev : capture_devices) {
+                if (dev.index == current_capture_device_index) preview_value = dev.name;
             }
-            if (ImGui::BeginCombo("##DeviceCombo", preview_value.c_str())) {
+            if (ImGui::BeginCombo("##CaptureCombo", preview_value.c_str())) {
                 // First choice: Default
-                if (ImGui::Selectable("Default Capture Device", current_device_index == -1)) {
-                    current_device_index = -1;
-                    audio::switch_device(current_device_index);
+                if (ImGui::Selectable("Default Capture Device", current_capture_device_index == -1)) {
+                    current_capture_device_index = -1;
+                    audio::switch_capture_device(current_capture_device_index);
                 }
                 
                 // Other choice
-                for (const auto& dev : devices) {
-                    bool is_selected = (current_device_index == dev.index);
+                for (const auto& dev : capture_devices) {
+                    bool is_selected = (current_capture_device_index == dev.index);
                     if (ImGui::Selectable(dev.name.c_str(), is_selected)) {
-                        current_device_index = dev.index;
-                        audio::switch_device(current_device_index);
+                        current_capture_device_index = dev.index;
+                        audio::switch_capture_device(current_capture_device_index);
                     }
                     if (is_selected) ImGui::SetItemDefaultFocus();
                 }
                 ImGui::EndCombo();
             }
-            if (ImGui::Button("Refresh Mic List")) devices = audio::get_capture_devices();
+            if (ImGui::Button("Refresh Mic List")) capture_devices = audio::get_capture_devices();
         }
 
         ImGui::Spacing();

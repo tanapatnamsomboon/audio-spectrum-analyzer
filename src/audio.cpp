@@ -26,6 +26,8 @@ bool g_is_paused = false;
 bool g_is_loaded = false;
 bool g_is_eof = false;
 
+int g_current_playback_device_index = -1;
+
 void data_callback(ma_device* p_device, void* p_output, const void* p_input, ma_uint32 frame_count) {
     std::lock_guard<std::mutex> lock(g_buffer_mutex);
     
@@ -68,7 +70,7 @@ bool init() {
     g_is_context_initialized = true;
 
     // Start with Default Device (-1)
-    return switch_device(-1);
+    return switch_capture_device(-1);
 }
 
 void cleanup() {
@@ -80,67 +82,6 @@ void cleanup() {
 std::vector<float> get_latest_samples() {
     std::lock_guard<std::mutex> lock(g_buffer_mutex);
     return g_sample_buffer;
-}
-
-std::vector<DeviceInfo> get_capture_devices() {
-    std::vector<DeviceInfo> devices;
-    if (!g_is_context_initialized) return devices;
-
-    ma_device_info* p_playback_infos;
-    ma_uint32 playback_count;
-    ma_device_info* p_capture_infos;
-    ma_uint32 capture_count;
-
-    if (ma_context_get_devices(&g_context, &p_playback_infos, &playback_count, &p_capture_infos, &capture_count) == MA_SUCCESS) {
-        for (ma_uint32 i = 0; i < capture_count; ++i) {
-            devices.push_back({(int)i, p_capture_infos[i].name});
-        }
-    }
-    return devices;
-}
-
-bool switch_device(int device_index) {
-    if (g_is_device_initialized) {
-        ma_device_uninit(&g_device);
-        g_is_device_initialized = false;
-    }
-
-    stop_file();
-    g_current_source = InputSource::Microphone;
-
-    ma_device_id* p_selected_id = nullptr;
-    if (device_index >= 0) {
-        ma_device_info* p_playback_infos;
-        ma_uint32 playback_count;
-        ma_device_info* p_capture_infos;
-        ma_uint32 capture_count;
-
-        if (ma_context_get_devices(&g_context, &p_playback_infos, &playback_count, &p_capture_infos, &capture_count) == MA_SUCCESS) {
-            if ((ma_uint32)device_index < capture_count) {
-                p_selected_id = &p_capture_infos[device_index].id;
-            }
-        }
-    }
-    
-    ma_device_config device_config = ma_device_config_init(ma_device_type_capture);
-    device_config.capture.pDeviceID = p_selected_id;
-    device_config.capture.format    = ma_format_f32;
-    device_config.capture.channels  = 1;
-    device_config.sampleRate        = 44100;
-    device_config.dataCallback      = data_callback;
-
-    if (ma_device_init(&g_context, &device_config, &g_device) != MA_SUCCESS) {
-        std::cerr << "Failed to initialize capture device.\n";
-        return false;
-    }
-
-    ma_device_start(&g_device);
-    g_is_device_initialized = true;
-
-    std::lock_guard<std::mutex> lock(g_buffer_mutex);
-    std::fill(g_sample_buffer.begin(), g_sample_buffer.end(), 0.0f);
-
-    return true;
 }
 
 bool load_file(const std::string& filepath) {
@@ -155,21 +96,37 @@ bool load_file(const std::string& filepath) {
     ma_decoder_config decoder_config = ma_decoder_config_init(ma_format_f32, 1, 44100);
     if (ma_decoder_init_file(filepath.c_str(), &decoder_config, &g_decoder) != MA_SUCCESS) {
         std::cerr << "Failed to load file: " << filepath << "\n";
-        switch_device(-1);
+        switch_capture_device(-1);
         return false;
     }
 
     g_is_loaded = true;
     g_is_file_playing = false;
     g_is_paused = false;
+    g_is_eof = false;
     g_current_source  = InputSource::File;
+
+    ma_device_id* p_selected_id = nullptr;
+    if (g_current_playback_device_index >= 0) {
+        ma_device_info* p_playback_infos;
+        ma_uint32 playback_count;
+        ma_device_info* p_capture_infos;
+        ma_uint32 capture_count;
+
+        if (ma_context_get_devices(&g_context, &p_playback_infos, &playback_count, &p_capture_infos, &capture_count) == MA_SUCCESS) {
+            if ((ma_uint32)g_current_playback_device_index < playback_count) {
+                p_selected_id = &p_playback_infos[g_current_playback_device_index].id;
+            }
+        }
+    }
 
     // 3. Initialize a new device, this time in "Playback" mode (speaker)
     ma_device_config device_config = ma_device_config_init(ma_device_type_playback);
-    device_config.playback.format = ma_format_f32;
-    device_config.playback.channels = 1;
-    device_config.sampleRate        = 44100;
-    device_config.dataCallback      = data_callback;
+    device_config.playback.pDeviceID = p_selected_id;
+    device_config.playback.format    = ma_format_f32;
+    device_config.playback.channels  = 1;
+    device_config.sampleRate         = 44100;
+    device_config.dataCallback       = data_callback;
 
     if (ma_device_init(&g_context, &device_config, &g_device) != MA_SUCCESS) {
         std::cerr << "Failed to init playback device.\n";
@@ -200,7 +157,7 @@ void pause() {
 
 void stop() {
     stop_file();
-    switch_device(-1);
+    switch_capture_device(-1);
 }
 
 void stop_file() {
@@ -220,6 +177,126 @@ bool is_playing() {
 bool is_paused() {
     return g_is_paused;
 }
+
+std::vector<DeviceInfo> get_capture_devices() {
+    std::vector<DeviceInfo> devices;
+    if (!g_is_context_initialized) return devices;
+
+    ma_device_info* p_playback_infos;
+    ma_uint32 playback_count;
+    ma_device_info* p_capture_infos;
+    ma_uint32 capture_count;
+
+    if (ma_context_get_devices(&g_context, &p_playback_infos, &playback_count, &p_capture_infos, &capture_count) == MA_SUCCESS) {
+        for (ma_uint32 i = 0; i < capture_count; ++i) {
+            devices.push_back({(int)i, p_capture_infos[i].name});
+        }
+    }
+    return devices;
+}
+
+bool switch_capture_device(int device_index) {
+    if (g_is_device_initialized) {
+        ma_device_uninit(&g_device);
+        g_is_device_initialized = false;
+    }
+
+    stop_file();
+    g_current_source = InputSource::Microphone;
+
+    ma_device_id* p_selected_id = nullptr;
+    if (device_index >= 0) {
+        ma_device_info* p_playback_infos;
+        ma_uint32 playback_count;
+        ma_device_info* p_capture_infos;
+        ma_uint32 capture_count;
+
+        if (ma_context_get_devices(&g_context, &p_playback_infos, &playback_count, &p_capture_infos, &capture_count) == MA_SUCCESS) {
+            if ((ma_uint32)device_index < capture_count) {
+                p_selected_id = &p_capture_infos[device_index].id;
+            }
+        }
+    }
+
+    ma_device_config device_config = ma_device_config_init(ma_device_type_capture);
+    device_config.capture.pDeviceID = p_selected_id;
+    device_config.capture.format    = ma_format_f32;
+    device_config.capture.channels  = 1;
+    device_config.sampleRate        = 44100;
+    device_config.dataCallback      = data_callback;
+
+    if (ma_device_init(&g_context, &device_config, &g_device) != MA_SUCCESS) {
+        std::cerr << "Failed to initialize capture device.\n";
+        return false;
+    }
+
+    ma_device_start(&g_device);
+    g_is_device_initialized = true;
+
+    std::lock_guard<std::mutex> lock(g_buffer_mutex);
+    std::fill(g_sample_buffer.begin(), g_sample_buffer.end(), 0.0f);
+
+    return true;
+}
+
+std::vector<DeviceInfo> get_playback_devices() {
+    std::vector<DeviceInfo> devices;
+    if (!g_is_context_initialized) return devices;
+
+    ma_device_info* p_playback_infos;
+    ma_uint32 playback_count;
+    ma_device_info* p_capture_infos;
+    ma_uint32 capture_count;
+
+    if (ma_context_get_devices(&g_context, &p_playback_infos, &playback_count, &p_capture_infos, &capture_count) == MA_SUCCESS) {
+        for (ma_uint32 i = 0; i < capture_count; ++i) {
+            devices.push_back({(int)i, p_playback_infos[i].name});
+        }
+    }
+    return devices;
+}
+
+bool switch_playback_device(int device_index) {
+    g_current_playback_device_index = device_index;
+
+    if (g_current_source == InputSource::File && g_is_loaded) {
+        bool was_playing = g_is_file_playing;
+
+        if (g_is_device_initialized) {
+            ma_device_uninit(&g_device);
+            g_is_device_initialized = false;
+        }
+
+        ma_device_id* p_selected_id = nullptr;
+        if (device_index >= 0) {
+            ma_device_info* p_playback_infos;
+            ma_uint32 playback_count;
+            ma_device_info* p_capture_infos;
+            ma_uint32 capture_count;
+
+            if (ma_context_get_devices(&g_context, &p_playback_infos, &playback_count, &p_capture_infos, &capture_count) == MA_SUCCESS) {
+                if ((ma_uint32)device_index < playback_count) {
+                    p_selected_id = &p_playback_infos[device_index].id;
+                }
+            }
+        }
+
+        ma_device_config device_config = ma_device_config_init(ma_device_type_playback);
+        device_config.playback.pDeviceID = p_selected_id;
+        device_config.playback.format    = ma_format_f32;
+        device_config.playback.channels  = 1;
+        device_config.sampleRate         = 44100;
+        device_config.dataCallback       = data_callback;
+
+        if (ma_device_init(&g_context, &device_config, &g_device) != MA_SUCCESS) return false;
+
+        ma_device_start(&g_device);
+        g_is_device_initialized = true;
+        g_is_file_playing = was_playing;
+    }
+    return true;
+}
+
 
 InputSource get_current_source() {
     return g_current_source;
