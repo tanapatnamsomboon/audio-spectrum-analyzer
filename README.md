@@ -2,6 +2,10 @@
 
 A real-time, cross-platform audio spectrum analyzer built with C++. This application captures live microphone input or plays back audio files, processes the signal using a Discrete Fourier Transform (DFT), and visualizes the frequency spectrum with a modern, hardware-accelerated GUI.
 
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/2947f3d0-d6d4-4368-b02d-f31c3021cfc2" width="100%" controls></video>
+</p>
+
 ## Features
 * **Dual Modes:** Seamlessly switch between live microphone capture and audio file playback.
 * **Real-time Signal Processing:** Implements a custom Discrete Fourier Transform (DFT) to convert time-domain audio signals into the frequency domain with adjustable exponential smoothing.
